@@ -1,3 +1,4 @@
+import base64
 import os
 from urllib.parse import urlencode
 
@@ -29,9 +30,15 @@ def zoom_connect(code: str):
     client_secret = os.getenv("ZOOM_CLIENT_SECRET", "")
     if client_secret == "":
         return {"Error": "No ZOOM_CLIENT_SECRET found in .env file"}
-    headers = {
-        "Authorization": f"{client_id}:{client_secret}",
-        "Content-Type": "application/x-www-form-urlencoded",
+    redirect_uri = os.getenv("ZOOM_REDIRECT_URL", "")
+    if redirect_uri == "":
+        return {"Error": "No ZOOM_REDIRECT_URL found in .env file"}
+
+    auth = requests.auth.HTTPBasicAuth(client_id, client_secret)
+    data = {
+        "code": code,
+        "grant_type": "authorization_code",
+        "redirect_uri": redirect_uri,
     }
-    return requests.post(TOKEN_URL, headers=headers).json()
+    return requests.post(TOKEN_URL, auth=auth, data=data).json()
 
