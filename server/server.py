@@ -1,4 +1,3 @@
-import base64
 import os
 from urllib.parse import urlencode, urljoin
 
@@ -10,7 +9,9 @@ app = FastAPI()
 AUTH_URL = "https://zoom.us/oauth/authorize"
 TOKEN_URL = "https://zoom.us/oauth/token"
 API_URL = "https://api.zoom.us/"
-U_REC_LIST_ENDPOINT = "/v2/users/me/recordings" # user recording list
+U_MEETING_LIST_EP = "/v2/users/me/meetings"
+U_MEETING_REC_EP = "/v2/meetings/{meeting_id}/recordings"
+REC_FILE_TYPE = "MP4"
 
 @app.get("/zoom/url")
 def zoom_url():
@@ -44,18 +45,33 @@ def zoom_connect(code: str):
     }
     return requests.post(TOKEN_URL, auth=auth, data=data).json()
 
-@app.get("/zoom/list")
-def zomm_list(meeting_id: str = "", from_date: str = "", to_date: str = ""):
+@app.get("/zoom/meetings")
+def zoom_meeting():
     zoom_token = os.getenv("ZOOM_TOKEN", "")
-    if zoom_token == "":
-        return {"Error": "No ZOOM_TOKEN found in .env file"}
-    base_url = urljoin(API_URL, U_REC_LIST_ENDPOINT)
-    params = {}
-    if meeting_id != "":
-        params["meeting_id"] = meeting_id
-    if from_date != "":
-        params["from_date"] = from_date
-    if to_date != "":
-        params["to_date"] = to_date
-    url = f"{base_url}?{urlencode(params)}"
-    return requests.get(url, headers={"Authorization": f"Bearer {zoom_token}"}).json()
+    base_url = urljoin(API_URL, U_MEETING_LIST_EP)
+    resp = requests.get(base_url, headers={"Authorization": f"Bearer {zoom_token}"}).json()
+    data = []
+    for meeting in resp["meetings"]:
+        m = {"name": meeting["topic"], "id": meeting["id"]}
+        data.append(m)
+
+    return data
+
+@app.get("/zoom/meetings/{meeting_id}")
+def zoom_meeting_rec(meeting_id):
+    zoom_token = os.getenv("ZOOM_TOKEN", "")
+    path = U_MEETING_REC_EP.replace("{meeting_id}", meeting_id)
+    base_url = urljoin(API_URL, path)
+    resp = requests.get(base_url, headers={"Authorization": f"Bearer {zoom_token}"}).json()
+
+    if "topic" not in resp:
+        return {"Error": "No recording"}
+
+    data = {"name": resp["topic"]}
+    rec_list = []
+    for rec in resp["recording_files"]:
+        if rec["file_type"] == REC_FILE_TYPE:
+            r = {"date": rec["recording_start"], "url": rec["download_url"]}
+            rec_list.append(r)
+    data["recordings"] = rec_list
+    return data
