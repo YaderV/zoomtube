@@ -17,12 +17,12 @@ REC_FILE_TYPE = "MP4"
 def zoom_url():
     client_id = os.getenv("ZOOM_CLIENT_ID", "")
     if client_id == "":
-        return {"Error": "No ZOOM_CLIENT_ID found in .env file"}
+        return "Error: No ZOOM_CLIENT_ID found in .env file"
     redirect_uri = os.getenv("ZOOM_REDIRECT_URL", "")
     if redirect_uri == "":
-        return {"Error": "No ZOOM_REDIRECT_URL found in .env file"}
+        return "Error: No ZOOM_REDIRECT_URL found in .env file"
     params = {"response_type": "code", "client_id": client_id, "redirect_uri": redirect_uri}
-    return {"url": f"{AUTH_URL}?{urlencode(params)}"}
+    return f"URL: {AUTH_URL}?{urlencode(params)}"
 
 
 @app.get("/zoom/connect")
@@ -50,12 +50,20 @@ def zoom_meeting():
     zoom_token = os.getenv("ZOOM_TOKEN", "")
     base_url = urljoin(API_URL, U_MEETING_LIST_EP)
     resp = requests.get(base_url, headers={"Authorization": f"Bearer {zoom_token}"}).json()
-    data = []
-    for meeting in resp["meetings"]:
-        m = {"name": meeting["topic"], "id": meeting["id"]}
-        data.append(m)
+    try:
+        data = []
+        for meeting in resp["meetings"]:
+            m = {"name": meeting["topic"], "id": meeting["id"]}
+            data.append(m)
+        return data
 
-    return data
+    except KeyError:
+        if 'message' in resp:
+            return f"Error: {resp['message']}"
+
+    return "Unexpected error happened"
+
+
 
 @app.get("/zoom/meetings/{meeting_id}")
 def zoom_meeting_rec(meeting_id):
@@ -63,15 +71,22 @@ def zoom_meeting_rec(meeting_id):
     path = U_MEETING_REC_EP.replace("{meeting_id}", meeting_id)
     base_url = urljoin(API_URL, path)
     resp = requests.get(base_url, headers={"Authorization": f"Bearer {zoom_token}"}).json()
+    try:
+        if "topic" not in resp:
+            # TODO: we are hidden errors
+            return "Error: No recording"
 
-    if "topic" not in resp:
-        return {"Error": "No recording"}
+        data = {"name": resp["topic"]}
+        rec_list = []
+        for rec in resp["recording_files"]:
+            if rec["file_type"] == REC_FILE_TYPE:
+                r = {"date": rec["recording_start"], "url": rec["download_url"]}
+                rec_list.append(r)
+        data["recordings"] = rec_list
+        return data
 
-    data = {"name": resp["topic"]}
-    rec_list = []
-    for rec in resp["recording_files"]:
-        if rec["file_type"] == REC_FILE_TYPE:
-            r = {"date": rec["recording_start"], "url": rec["download_url"]}
-            rec_list.append(r)
-    data["recordings"] = rec_list
-    return data
+    except KeyError:
+        if 'message' in resp:
+            return f"Error: {resp['message']}"
+
+    return "Unexpected error happened"
